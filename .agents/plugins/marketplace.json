@@ -1,0 +1,15 @@
+{
+  "name": "cockpit",
+  "description": "Personal marketplace of plugins — Codex-host registry (mirror of .claude-plugin/marketplace.json).",
+  "owner": {
+    "name": "Eliton Gadotti"
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "description": "Core skills + minimal harness + pyspark env related skills",
+      "version": "0.2.0",
+      "source": "../../plugins/cockpit"
+    }
+  ]
+}

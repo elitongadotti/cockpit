@@ -1,0 +1,11 @@
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Runtime state written by hooks/harness (not source)
+claude-decisions.json
+claude-progress.txt
+IMPLEMENTATION_PLAN.md
+PROMPT.md

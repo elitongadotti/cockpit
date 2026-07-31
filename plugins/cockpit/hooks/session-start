@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# SessionStart hook for cockpit: inject the using-cockpit bootstrap skill as
+# additionalContext so skills auto-trigger from turn 1 without the user
+# having to remember they exist.
+#
+# Fires on startup + /clear + compaction — the three moments skill routing
+# gets rediscovered.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+
+BOOTSTRAP="${PLUGIN_ROOT}/skills/using-cockpit/SKILL.md"
+[ -f "$BOOTSTRAP" ] || exit 0
+
+body="$(cat "$BOOTSTRAP")"
+
+# JSON-escape the body without pulling in jq/python.
+escape_for_json() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '%s' "$s"
+}
+escaped="$(escape_for_json "$body")"
+
+ctx="<IMPORTANT>\nThis project uses cockpit. Below is the using-cockpit bootstrap — the routing rules for the other cockpit skills. Read it BEFORE responding; invoke matching skills BEFORE any other action.\n\n${escaped}\n</IMPORTANT>"
+
+# Claude Code expects hookSpecificOutput.additionalContext (nested).
+# Other SDK-standard clients (e.g. Codex) accept top-level additionalContext.
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "SessionStart",\n    "additionalContext": "%s"\n  }\n}\n' "$ctx"
+else
+  printf '{\n  "additionalContext": "%s"\n}\n' "$ctx"
+fi
+exit 0

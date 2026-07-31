@@ -1,0 +1,19 @@
+{
+  "name": "cockpit",
+  "description": "Personal marketplace of Claude Code plugins — skills, hooks and agents I reuse across projects.",
+  "owner": {
+    "name": "Eliton Gadotti",
+    "url": "https://github.com/elitongadotti"
+  },
+  "plugins": [
+    {
+      "name": "cockpit",
+      "description": "Core skills + minimal harness (verifier agent, session-start / pre-compact hooks).",
+      "version": "0.2.0",
+      "source": "./plugins/cockpit",
+      "author": {
+        "name": "Eliton Gadotti"
+      }
+    }
+  ]
+}

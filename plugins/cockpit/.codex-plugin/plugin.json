@@ -1,0 +1,9 @@
+{
+  "name": "cockpit",
+  "description": "Core skills + minimal harness for Codex (mirror of .claude-plugin/plugin.json).",
+  "version": "0.2.0",
+  "author": {
+    "name": "Eliton Gadotti"
+  },
+  "license": "MIT"
+}
