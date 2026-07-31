@@ -7,7 +7,7 @@ I based this repo on the:
 - [loopkit](https://github.com/Archive228/loopkit) — MIT, © 2026 Archive228
 - [ai-tools](https://github.com/it-bens/ai-tools) — MIT, © 2025 Martin Bens
 
-So, yes, its not an original repo in its core ~~as everything else nowadays~~. And it still is the skillset I use as my day-to-day performance boost.
+So, yes, it's not an original repo in its core ~~as everything else nowadays~~. And it's still the skillset I use as my day-to-day performance boost.
 
 `cockpit` is MIT too — see [LICENSE](LICENSE), which carries both upstream
 copyright notices.
