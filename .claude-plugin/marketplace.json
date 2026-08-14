@@ -9,7 +9,7 @@
     {
       "name": "cockpit",
       "description": "Core skills + minimal harness (verifier agent, session-start / pre-compact hooks).",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "./plugins/cockpit",
       "author": {
         "name": "Eliton Gadotti"
