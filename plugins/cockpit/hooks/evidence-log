@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# PostToolUse hook for cockpit: append a one-line record of every command the
+# agent actually ran to ./.cockpit/evidence.log.
+#
+# This is a sensor, not a gate. It never blocks, never rewrites a tool result,
+# and exits 0 on every path. Its only job is to leave a trail of what was
+# executed, so a later claim of "I measured this" can be checked against
+# something that happened instead of taken on faith.
+#
+# Consumed by the evidence-guard hook when a doc requires an [EMPIRICAL]-style
+# tag. Useful on its own as a session audit trail.
+set -u
+
+log() { printf 'cockpit/evidence-log: %s\n' "$*" >&2; }
+
+payload="$(cat 2>/dev/null || true)"
+[ -n "$payload" ] || exit 0
+command -v jq >/dev/null 2>&1 || { log "jq not found, skipping"; exit 0; }
+
+tool="$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null || true)"
+cwd="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null || true)"
+[ -n "$cwd" ] || cwd="$PWD"
+
+# Only tools that produce external evidence. Reading a file proves nothing
+# about the world; running a command or fetching a URL does.
+case "$tool" in
+  Bash|WebFetch|WebSearch) ;;
+  *) exit 0 ;;
+esac
+
+# The evidence itself: the command line, the URL, or the query.
+subject="$(printf '%s' "$payload" \
+  | jq -r '.tool_input.command // .tool_input.url // .tool_input.query // empty' \
+  2>/dev/null || true)"
+[ -n "$subject" ] || exit 0
+
+# Truncate to keep one record on one line and bound the file size. Newlines
+# become spaces so a heredoc or multi-line pipeline stays a single record.
+subject="$(printf '%s' "$subject" | tr '\n\r\t' '   ' | cut -c1-500)"
+
+# Whether the command succeeded matters: a failed run is not a measurement.
+# PostToolUse provides tool_result.type as text|error|image; "error" is the
+# only signal the docs guarantee, so anything else records as ok.
+status="$(printf '%s' "$payload" \
+  | jq -r '.tool_result.type // "unknown"' 2>/dev/null || echo 'unknown')"
+[ -n "$status" ] || status='unknown'
+
+dir="${cwd}/.cockpit"
+mkdir -p "$dir" 2>/dev/null || { log "cannot create $dir"; exit 0; }
+
+ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf '%s\t%s\tresult=%s\t%s\n' "$ts" "$tool" "$status" "$subject" \
+  >> "${dir}/evidence.log" 2>/dev/null \
+  || log "cannot write ${dir}/evidence.log"
+
+exit 0

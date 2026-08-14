@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# PreToolUse hook for cockpit: block an Edit/Write that adds an unlabeled claim
+# to a doc that asked for labels.
+#
+# Opt-in per file. The target doc declares its own policy in frontmatter:
+#
+#   ---
+#   cockpit_evidence:
+#     require: ['[DOC]', '[EMPIRICAL]']
+#     applies_to_lines_matching: '^\|'
+#   ---
+#
+# No frontmatter block -> exit 0 immediately. A README never wants this rule,
+# and nothing needs configuring for it to stay out of the way.
+#
+# Two tags get correlated instead of merely counted:
+#   [EMPIRICAL] -> must match a real command in .cockpit/evidence.log
+#   [DOC]       -> must carry a URL on the same line
+# Everything else in `require` is satisfied by presence alone.
+#
+# Fail-open by design: a broken payload, a missing jq or an unreadable file
+# exits 0. This guard exists to catch an honest omission, not to be a security
+# boundary — anyone can edit the frontmatter it reads. Never exit 2; a false
+# block is worse than a missed one.
+set -u
+
+log() { printf 'cockpit/evidence-guard: %s\n' "$*" >&2; }
+
+pass() { exit 0; }
+
+deny() {
+  # Documented PreToolUse form: hookSpecificOutput.permissionDecision.
+  # The reason goes to the model, not the user, so write it as an instruction.
+  local reason="$1"
+  reason="${reason//\\/\\\\}"
+  reason="${reason//\"/\\\"}"
+  reason="${reason//$'\n'/\\n}"
+  printf '{\n  "hookSpecificOutput": {\n    "hookEventName": "PreToolUse",\n    "permissionDecision": "deny",\n    "permissionDecisionReason": "%s"\n  }\n}\n' "$reason"
+  exit 0
+}
+
+payload="$(cat 2>/dev/null || true)"
+[ -n "$payload" ] || pass
+command -v jq >/dev/null 2>&1 || { log "jq not found, passing"; pass; }
+
+tool="$(printf '%s' "$payload" | jq -r '.tool_name // empty' 2>/dev/null || true)"
+case "$tool" in
+  Edit|Write|MultiEdit|NotebookEdit) ;;
+  *) pass ;;
+esac
+
+file="$(printf '%s' "$payload" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)"
+[ -n "$file" ] || pass
+[ -f "$file" ] || pass   # new file has no frontmatter to opt in with
+
+cwd="$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null || true)"
+[ -n "$cwd" ] || cwd="$PWD"
+
+# ---------------------------------------------------------------- policy read
+# Frontmatter must be the first line. Read only the leading block, so a fenced
+# example of this same frontmatter further down the file is not mistaken for
+# policy (this file's own docs do exactly that).
+head -1 "$file" 2>/dev/null | grep -q '^---[[:space:]]*$' || pass
+fm="$(awk 'NR==1 && /^---[[:space:]]*$/ {inblock=1; next}
+           inblock && /^---[[:space:]]*$/ {exit}
+           inblock {print}' "$file" 2>/dev/null || true)"
+printf '%s' "$fm" | grep -q '^cockpit_evidence:' || pass
+
+# Minimal YAML read: this is a two-key block, so awk beats a YAML dependency.
+require_raw="$(printf '%s\n' "$fm" \
+  | awk '/^cockpit_evidence:/{in_b=1; next}
+         in_b && /^[^[:space:]]/{exit}
+         in_b && /require:/{sub(/.*require:[[:space:]]*/,""); print; exit}' \
+  2>/dev/null || true)"
+line_re="$(printf '%s\n' "$fm" \
+  | awk '/^cockpit_evidence:/{in_b=1; next}
+         in_b && /^[^[:space:]]/{exit}
+         in_b && /applies_to_lines_matching:/{
+           sub(/.*applies_to_lines_matching:[[:space:]]*/,""); print; exit}' \
+  2>/dev/null || true)"
+
+# Strip the YAML flow-sequence brackets, then split on commas. The patterns are
+# quoted because an unquoted [ opens a glob character class, which is a syntax
+# error in some shells and a silent no-op in others. Quotes are trimmed per
+# item below rather than here: a tag is itself bracketed ('[DOC]'), so a global
+# strip would eat the tag's own delimiters.
+require_raw="${require_raw#"["}"
+require_raw="${require_raw%"]"}"
+line_re="${line_re#\'}"; line_re="${line_re%\'}"
+line_re="${line_re#\"}"; line_re="${line_re%\"}"
+
+# The printf below must emit a trailing newline: `read` discards a final
+# unterminated field, which silently drops the last tag in the list.
+tags=()
+while IFS= read -r t; do
+  t="${t#"${t%%[![:space:]]*}"}"; t="${t%"${t##*[![:space:]]}"}"
+  t="${t#\'}"; t="${t%\'}"; t="${t#\"}"; t="${t%\"}"
+  [ -n "$t" ] && tags+=("$t")
+done < <(printf '%s\n' "$require_raw" | tr ',' '\n')
+[ "${#tags[@]}" -gt 0 ] || pass
+
+# ------------------------------------------------------------- added lines
+# Only lines this call ADDS are checked. Pre-existing unlabeled lines are not
+# this edit's problem, and failing on them would make the guard unusable on any
+# doc that predates it.
+added=""
+case "$tool" in
+  Edit)
+    old="$(printf '%s' "$payload" | jq -r '.tool_input.old_string // ""' 2>/dev/null || true)"
+    new="$(printf '%s' "$payload" | jq -r '.tool_input.new_string // ""' 2>/dev/null || true)"
+    old_f="$(mktemp "${TMPDIR:-/tmp}/cockpit-eg-old.XXXXXX")" || pass
+    new_f="$(mktemp "${TMPDIR:-/tmp}/cockpit-eg-new.XXXXXX")" || { rm -f "$old_f"; pass; }
+    printf '%s\n' "$old" > "$old_f"; printf '%s\n' "$new" > "$new_f"
+    added="$(comm -13 <(sort -u "$old_f") <(sort -u "$new_f") 2>/dev/null || true)"
+    rm -f "$old_f" "$new_f"
+    ;;
+  Write)
+    content="$(printf '%s' "$payload" | jq -r '.tool_input.content // ""' 2>/dev/null || true)"
+    cur_f="$(mktemp "${TMPDIR:-/tmp}/cockpit-eg-cur.XXXXXX")" || pass
+    nxt_f="$(mktemp "${TMPDIR:-/tmp}/cockpit-eg-nxt.XXXXXX")" || { rm -f "$cur_f"; pass; }
+    sort -u "$file" > "$cur_f" 2>/dev/null
+    printf '%s\n' "$content" | sort -u > "$nxt_f" 2>/dev/null
+    added="$(comm -13 "$cur_f" "$nxt_f" 2>/dev/null || true)"
+    rm -f "$cur_f" "$nxt_f"
+    ;;
+  *)
+    # MultiEdit / NotebookEdit payload shapes are not verified here; passing
+    # rather than guessing at field names.
+    pass
+    ;;
+esac
+[ -n "$added" ] || pass
+
+# Narrow to the lines that actually carry claims, if the doc said how.
+if [ -n "$line_re" ]; then
+  added="$(printf '%s\n' "$added" | grep -E "$line_re" 2>/dev/null || true)"
+  [ -n "$added" ] || pass
+fi
+
+# Ignore structural noise: blank lines, headings, fences, table separators.
+added="$(printf '%s\n' "$added" \
+  | grep -vE '^[[:space:]]*$|^[[:space:]]*#|^[[:space:]]*```|^[[:space:]]*\|[[:space:]]*:?-{2,}' \
+  2>/dev/null || true)"
+[ -n "$added" ] || pass
+
+# ------------------------------------------------------------------- checks
+evidence="${cwd}/.cockpit/evidence.log"
+
+has_any_tag() {
+  local line="$1" t
+  for t in "${tags[@]}"; do
+    case "$line" in *"$t"*) return 0 ;; esac
+  done
+  return 1
+}
+
+wants_tag() {
+  local want="$1" t
+  for t in "${tags[@]}"; do
+    [ "$t" = "$want" ] && return 0
+  done
+  return 1
+}
+
+problems=""
+while IFS= read -r line; do
+  [ -n "$line" ] || continue
+
+  if ! has_any_tag "$line"; then
+    problems="${problems}
+  unlabeled: ${line:0:120}"
+    continue
+  fi
+
+  line_has() { case "$1" in *"$2"*) return 0 ;; *) return 1 ;; esac; }
+
+  # [DOC] asserts a source, so it must name one.
+  if wants_tag '[DOC]' && line_has "$line" '[DOC]'; then
+    if ! printf '%s' "$line" | grep -qE 'https?://'; then
+      problems="${problems}
+  [DOC] without a URL: ${line:0:120}"
+    fi
+  fi
+
+  # [EMPIRICAL] asserts a measurement, so something must have run.
+  if wants_tag '[EMPIRICAL]' && line_has "$line" '[EMPIRICAL]'; then
+    if [ ! -s "$evidence" ]; then
+      problems="${problems}
+  [EMPIRICAL] but no command ran this session: ${line:0:120}"
+    fi
+  fi
+done < <(printf '%s\n' "$added")
+
+[ -n "$problems" ] || pass
+
+deny "Edit to $(basename "$file") blocked by its own cockpit_evidence frontmatter. Each added claim needs one of: ${tags[*]}.${problems}
+
+Fix the claim, not the tag. Label it [EMPIRICAL] only after running the command (it lands in .cockpit/evidence.log), [DOC] only with the source URL on the same line. If the basis is neither, say so in the line itself instead of tagging it. Do not edit the frontmatter to get past this."

@@ -20,6 +20,7 @@ This project has the **cockpit** plugin installed. Before acting, check whether 
 | Long session, big files, accuracy dropping | `context-budget` |
 | Ending or resuming a multi-session project | `shift-notes` |
 | Starting a session after a "done" feature | `broken-window-check` |
+| Recording a finding, constraint, or benchmark number | `evidence-discipline` |
 
 After any code change, invoke the `verifier` agent against the diff and the spec.
 

@@ -9,3 +9,4 @@ claude-decisions.json
 claude-progress.txt
 IMPLEMENTATION_PLAN.md
 PROMPT.md
+.cockpit/

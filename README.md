@@ -144,7 +144,42 @@ compatibility contract.
 | skill | `context-budget` | Keep context lean on long sessions |
 | skill | `shift-notes` | Between-session handoff file |
 | skill | `broken-window-check` | Smoke-test last "done" feature |
+| skill | `evidence-discipline` | Label a claim's basis: measured, documented, or unverified |
 | skill | `using-cockpit` | Routing rules (injected at session start) |
 | agent | `verifier` | Reviews a diff assuming it's broken |
 | hook  | `session-start` | Injects `using-cockpit` as context |
 | hook  | `pre-compact` | Captures decisions before compaction |
+| hook  | `evidence-log` | Records every command run to `.cockpit/evidence.log` |
+| hook  | `evidence-guard` | Blocks unlabeled claims in docs that opt in |
+
+## The evidence guard
+
+`evidence-guard` is the one hook here that can **deny** a tool call, so it is
+deliberately narrow: it only acts on a file that asks for it, in that file's own
+frontmatter.
+
+```markdown
+---
+cockpit_evidence:
+  require: ['[DOC]', '[EMPIRICAL]']
+  applies_to_lines_matching: '^\|'
+---
+```
+
+A file without that block is never checked — which is every file by default. Pick
+whatever tag vocabulary suits the doc (`[MEASURED]`, `[SOURCE]`, `[RFC]`); only
+two get extra verification when you list them:
+
+- `[EMPIRICAL]` — must correlate with a command in `.cockpit/evidence.log`,
+  written by the `evidence-log` hook. Claiming a measurement nothing ran is the
+  failure this exists to catch.
+- `[DOC]` — must carry a URL on the same line.
+
+Only lines an edit **adds** are checked, so it works on docs that predate it.
+Blank lines, headings, fences and table separators are skipped.
+
+**This is a safety net, not a security boundary.** Anything with write access can
+edit the frontmatter it reads, and the guard fails open on a malformed payload,
+a missing `jq`, or an unreadable file. It catches an honest omission — that is
+the whole claim. `.cockpit/evidence.log` records commands, so treat it like any
+shell history: keep it out of git.

@@ -1,7 +1,7 @@
 {
   "name": "cockpit",
   "description": "Core skills + minimal harness (verifier subagent, session-start bootstrap, pre-compact decision capture) for Claude Code and Codex.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": {
     "name": "Eliton Gadotti"
   },
