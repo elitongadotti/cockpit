@@ -37,6 +37,10 @@ that host.
 | Claude Code | `.claude-plugin/plugin.json` | `.claude-plugin/marketplace.json` |
 | Codex       | `.codex-plugin/plugin.json`  | `.agents/plugins/marketplace.json` |
 
+Current state: only `cockpit` supports both hosts. `shunt` is Claude Code only —
+its hooks and Haiku subagents have no Codex equivalent, so it ships no
+`.codex-plugin/plugin.json` and is not registered in `.agents/plugins/marketplace.json`.
+
 ## Conventions
 
 - One SKILL.md per skill; frontmatter needs `name` + `description`
@@ -45,7 +49,8 @@ that host.
   marketplace doesn't ship (no broken `[[links]]`).
 - Hook scripts must be executable (`chmod +x`) and reference
   `${CLAUDE_PLUGIN_ROOT}` for paths, never a hardcoded absolute path.
-- Bump `version` in BOTH `plugin.json` files together.
+- Bump `version` in every `plugin.json` the plugin ships, and in the
+  marketplace registries listing it, together.
 
 ## Adding a Skill From a Source
 

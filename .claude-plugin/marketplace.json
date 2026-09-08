@@ -14,6 +14,16 @@
       "author": {
         "name": "Eliton Gadotti"
       }
+    },
+    {
+      "name": "shunt",
+      "description": "Routes bulk file reads and boilerplate generation to Haiku subagents, keeping file contents out of the main model's context.",
+      "version": "0.1.0",
+      "source": "./plugins/shunt",
+      "author": {
+        "name": "Eliton Gadotti"
+      },
+      "license": "Apache-2.0"
     }
   ]
 }
