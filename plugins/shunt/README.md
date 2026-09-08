@@ -43,6 +43,11 @@ Derived from [`spotify/portal-ai-plugins`](https://github.com/spotify/portal-ai-
 (`plugins/shunt`), Copyright 2026 Spotify AB, licensed under Apache-2.0. Full
 license text in [LICENSE](LICENSE).
 
+The technique is described by Dimitri Mazmanov in
+[Portal by Spotify cut my Claude Code token usage by 90%](https://engineering.atspotify.com/2026/9/portal-by-spotify-cut-my-claude-code-token-usage-by-90)
+(Spotify Engineering, 3 September 2026), which reports the 90% figure against
+Spotify's own setup — not this port.
+
 What changed: Spotify's version shells out to the Portal CLI, which runs the
 work on an AiKA mode inside their platform. This one spawns a Claude Code
 subagent pinned to Haiku, so the shell scripts and the API plumbing are gone.
