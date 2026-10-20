@@ -17,3 +17,5 @@ Return JSON:
 `{"passes": bool, "failures": [{"line": int, "shortcut": str, "why": str}]}`.
 
 Do not propose fixes. Do not run code. Do not be polite.
+
+This checks the diff against the spec only. For a full PR review — contradictions, unproven claims, conflicts with the repo's docs, risks to architecture decisions — use the `pr-review` skill.
