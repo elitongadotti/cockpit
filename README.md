@@ -141,6 +141,7 @@ compatibility contract.
 | skill | `leak-check` | Catch secrets, PII and internal context before commit |
 | skill | `writing-commit-messages` | Commit message about the focus, not the scaffolding |
 | skill | `pr-from-diff` | Write an approvable PR description |
+| skill | `pr-review` | Review a PR for contradictions, unproven claims, doc conflicts, architecture risk |
 | skill | `context-budget` | Keep context lean on long sessions |
 | skill | `shift-notes` | Between-session handoff file |
 | skill | `broken-window-check` | Smoke-test last "done" feature |

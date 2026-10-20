@@ -17,6 +17,7 @@ This project has the **cockpit** plugin installed. Before acting, check whether 
 | Committing, or pasting anything somewhere public | `leak-check` |
 | Writing a commit message | `writing-commit-messages` |
 | Opening a pull request | `pr-from-diff` |
+| Reviewing a PR, branch or diff | `pr-review` |
 | Long session, big files, accuracy dropping | `context-budget` |
 | Ending or resuming a multi-session project | `shift-notes` |
 | Starting a session after a "done" feature | `broken-window-check` |
