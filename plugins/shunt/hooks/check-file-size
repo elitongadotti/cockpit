@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# Copyright 2026 Spotify AB
+# Copyright 2026 Eliton Gadotti
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# MODIFIED from spotify/portal-ai-plugins (plugins/shunt/hooks/check-file-size).
+# Emits the documented hookSpecificOutput.permissionDecision shape instead of
+# the bare {"decision": ...} form, and fails open when jq is missing.
+#
+# Block full-file reads on large files, redirect to the bulk-reader skill.
+# Self-contained: all routing logic lives here.
+
+# Fail-open by design: a broken payload or a missing jq allows the read. This
+# hook exists to redirect an expensive read, not to be a security boundary.
+allow() { exit 0; }
+
+deny() {
+  local reason="$1"
+  reason="${reason//\\/\\\\}"
+  reason="${reason//\"/\\\"}"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+  exit 0
+}
+
+command -v jq >/dev/null 2>&1 || allow
+
+MIN_LINES="${SHUNT_MIN_LINES:-350}"
+case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
+
+input=$(cat)
+
+# The worker agents were spawned to read these files — blocking them would
+# deadlock the very delegation this hook asks for. Any subagent is exempt: a
+# subagent's context is already separate from the main one.
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // empty')
+[ -n "$agent_type" ] && allow
+
+file_path=$(echo "$input" | jq -r '.tool_input.file_path // empty')
+offset=$(echo "$input" | jq -r '.tool_input.offset // empty')
+limit=$(echo "$input" | jq -r '.tool_input.limit // empty')
+
+# Allow targeted reads (offset or limit set) — Claude already knows what it needs
+if [ -n "$offset" ] || [ -n "$limit" ]; then
+  allow
+fi
+
+# Allow if file doesn't exist or path is empty
+if [ -z "$file_path" ] || [ ! -f "$file_path" ]; then
+  allow
+fi
+
+# Allow small files — delegation overhead isn't worth it
+lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$lines" -le "$MIN_LINES" ]; then
+  allow
+fi
+
+deny "File is ${lines} lines (threshold: ${MIN_LINES}). Use the bulk-reader skill to delegate this read to the bulk-reader agent instead of reading it directly. If you need exact content for editing, re-read with an offset/limit for just the section you need."

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Copyright 2026 Spotify AB
+# Copyright 2026 Eliton Gadotti
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# MODIFIED from spotify/portal-ai-plugins (plugins/shunt/hooks/check-bash-read).
+# Emits the documented hookSpecificOutput.permissionDecision shape instead of
+# the bare {"decision": ...} form, and fails open when jq is missing.
+#
+# Block Bash commands that read large files, redirect to the bulk-reader skill.
+# Catches cat/head/tail/less/more that bypass the Read hook.
+
+# Fail-open by design: a broken payload or a missing jq allows the read. This
+# hook exists to redirect an expensive read, not to be a security boundary.
+allow() { exit 0; }
+
+deny() {
+  local reason="$1"
+  reason="${reason//\\/\\\\}"
+  reason="${reason//\"/\\\"}"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+  exit 0
+}
+
+command -v jq >/dev/null 2>&1 || allow
+
+MIN_LINES="${SHUNT_MIN_LINES:-350}"
+case "$MIN_LINES" in ''|*[!0-9]*) MIN_LINES=350 ;; esac
+
+input=$(cat)
+
+# The worker agents were spawned to read these files — blocking them would
+# deadlock the very delegation this hook asks for. Any subagent is exempt: a
+# subagent's context is already separate from the main one.
+agent_type=$(printf '%s' "$input" | jq -r '.agent_type // empty')
+[ -n "$agent_type" ] && allow
+
+command=$(echo "$input" | jq -r '.tool_input.command // empty')
+[ -z "$command" ] && allow
+
+# Skip piped commands (cat file | grep) — those are targeted reads
+echo "$command" | grep -qE '\|' && allow
+
+# Skip redirections (cat file > out) — not a read-into-context operation
+echo "$command" | grep -qE '>' && allow
+
+# Extract file path from read commands, stripping flags (e.g. cat -n, head -100)
+file_path=""
+if echo "$command" | grep -qE '^(cat|head|tail|less|more) '; then
+  # Remove the command name, then strip any flags (-n, -100, --number, etc.)
+  args=$(echo "$command" | sed -E 's/^(cat|head|tail|less|more) +//')
+  for arg in $args; do
+    case "$arg" in
+      -*) continue ;;
+      *)  file_path=$(echo "$arg" | tr -d '"'"'"); break ;;
+    esac
+  done
+fi
+
+[ -z "$file_path" ] && allow
+[ ! -f "$file_path" ] && allow
+
+lines=$(wc -l < "$file_path" 2>/dev/null | tr -d ' ' || echo "0")
+if [ "$lines" -gt "$MIN_LINES" ]; then
+  deny "File is ${lines} lines (threshold: ${MIN_LINES}). Use the bulk-reader skill to delegate this read to the bulk-reader agent instead of cat/head/tail."
+else
+  allow
+fi
