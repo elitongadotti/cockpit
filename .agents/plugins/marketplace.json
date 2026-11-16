@@ -8,7 +8,7 @@
     {
       "name": "cockpit",
       "description": "Core skills + minimal harness + pyspark env related skills",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "source": "../../plugins/cockpit"
     }
   ]
